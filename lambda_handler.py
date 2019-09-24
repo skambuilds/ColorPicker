@@ -45,7 +45,7 @@ def lambda_handler(event, context):
     # the json file contains the index of the images for each user
     json_name="images.json"
     json_path = "/tmp/"+json_name
-    json_images = []        # read the json file
+    json_images = {}        # read the json file
     # if the file exists, it is downloaded and loaded, otherwise it throws ClientError
     # before it tries to open the file
     try:
@@ -62,10 +62,17 @@ def lambda_handler(event, context):
                 'blue': blue
                 }
 
-    if user_code in json_images['users']:
-        json_images['users'][user_code].append(img_data)
-    else:
-        json_images['users'][user_code] = [img_data]
+    stop = False
+    for users, macnames in json_images.items():
+        for macname in macnames.keys():
+            if user_code == macname:    # append new data
+                json_images[users][user_code].append(img_data)
+                stop = True
+                break
+
+    # insert user for the first time if not already present
+    if not stop:
+        json_images['users'] = {user_code: [img_data]}
 
     with open(json_path, 'w') as fp:
         json.dump(json_images, fp)
