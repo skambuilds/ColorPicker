@@ -1,47 +1,32 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_VC0706.h>
+#include <SD.h>
 #include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
-#include "FS.h"
+#include <PubSubClient.h>
 
-// Device identifier
-char* deviceID = "NM0001";
+// SD slave pin
+#define CS_PIN D8
 
-const char* ssid = "your_ssid";
-const char* wifipwd = "your_wifipwd";
+bool debugOn = true;
 
-// FTP server details
-char* xhost = "your_IP_Address";
-char* xusername = "your_ftp_username";
-char* xpassword = "your_ftp_password";
-// Destination folder on FTP server
-char* xfolder = "/files";
-/* This is an optional parameter with the function prototype 
-defined below. To leave the default folder on the server 
-unchanged, either enter "" for xfolder or omit this param in 
-the function call in doFTP() */
-
-// SPIFFS file path to upload
-char* xfilepath = "/last.jpg";
-// Name of the uploaded file
-char* xfilename = "last.jpg";
- // FTP response for the upload operation
-short FTPresult;
-
-
-bool debugOn = false;
+// The camera may fail during reading (nodemcu only), try few times to get a picture.
 bool fileOpen = false;
-// Maximum number of acceptable errors in camera reading
-uint8_t maxErrors = 0;
-// Maximum number of attempts taking shots
-uint8_t retryShoots = 10;
-// Camera connection to NodeMCU: TX -> D3 and RX -> D4)
-SoftwareSerial camera(0, 2);
-
+uint8_t maxErrors = 0;    // Max number of errors allowed
+uint8_t retryShoots = 10; // Max number of chances to get a photo
+SoftwareSerial camera(0, 2);  // RX(red on D3) TX(white on D4)
 Adafruit_VC0706 cam = Adafruit_VC0706(&camera);
 
-// File path used to save the photo on the file system SPIFFS of NodeMCU
-char* filePath = "/last.jpg";
+boolean takeShoot();
+
+// bool doUpload = false;
+// if true it uploads the picture, otherwise just list the files in the SD
+bool doUpload = true;
+
+// base filename to save
+String devID = WiFi.macAddress() + "_000.jpg";
+char *xfilename = const_cast<char*>(devID.c_str());
+File root;
 
 // LCD number of columns and rows
 int lcdColumns = 16;
@@ -50,301 +35,271 @@ int lcdRows = 2;
 // Run an I2C scanner sketch to know your display address
 LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
 
-// Function prototype - perform the shoot
-boolean takeShoot();
+// Router Configuration
+const char* ssid = "ssid";
+const char* wifipwd = "pass";
+
+// FTP server details
+char* xhost = "ftp_ip";
+char* xusername = "ftp username";
+char* xpassword = "tp pass";
+char* xfolder = "ftp destination folder"; 
+
+/* 20190113V7-FTP Client 
+/*destination folder on FTP server
+this is an optional parameter with the function prototype 
+defined below. To leave the default folder on the server 
+unchanged, either enter "" for xfolder or omit this param in 
+the function call in doFTP() */
+
 //Function prototype - required if folder is an optional argument
-short doFTP(char* , char* , char* , char* , char* , char* = "");
+short doFTP(char* , char* , char* , char* , char* = "");
+short FTPresult; //outcome of FTP upload
+
+//mqtt callback
+void callback(char* topic, byte* payload, unsigned int length);
+
+String mac = WiFi.macAddress();
+const char* topic = "device mac address";//const_cast<char*>(mac.c_str());
+const char* mqtt_broker = "mqtt broker ip";
+WiFiClient espClient;
+PubSubClient client(mqtt_broker, 1883, callback, espClient);
 
 // Button pin setting
 int button = 16; //D0 (gpio16)
 int buttonState = 0;
 
-bool doUpload = true;
-
 void setup(){
-	Serial.begin(115200);
+  Serial.begin(115200);
 
-	pinMode(button, INPUT);
-	// initialize LCD
-	lcd.init();
-	// turn on LCD backlight                      
-	lcd.backlight();
-	// set cursor to first column, first row
-  	lcd.setCursor(0, 0);
-  	lcd.print("Color Picker");
+  pinMode(button, INPUT);
+  // initialize LCD
+  lcd.init();
+  // turn on LCD backlight                      
+  lcd.backlight();
+  // set cursor to first column, first row
+  lcd.setCursor(0, 0);
+  lcd.print("Color Picker");
 
-  	delay(3000); 	
+  delay(3000); // The camera does not accept commands before 2.5s at least
 
-	Serial.println("---------------Setup complete---------------");
-	lcd.clear();
-	lcd.print("Press the button");
-	lcd.setCursor(0,1);  
-  	lcd.print("to take a photo");
+  pinMode(button, INPUT);
+  Serial.println();
+  Serial.println(mac);
+
+  // init SD
+  if (!SD.begin(CS_PIN)) {
+    Serial.println("Fail to initialize SD, check the wires or even if the SD is present.");
+    exit(0);
+  }
+
+  // Start camera connection
+  Serial.println("Starting camera...");
+  if(cam.begin()){
+    // Print out the camera version information
+    char *reply = cam.getVersion();
+    if (reply == 0) {
+      Serial.print("Failed to get version");
+    } else {
+      Serial.println("-----------------");
+      Serial.print(reply);
+      Serial.println("-----------------");
+    }
+    cam.reset();
+    delay(3000);
+    cam.setMotionDetect(false);
+    // Set the picture size - you can choose one of 640x480, 320x240 or 160x120
+    // Remember that bigger pictures take longer to transmit!
+    // Reset is necessary only if resolution other than 640x480 is selected
+    
+//    cam.setImageSize(VC0706_640x480);cam.reset(); // too many errors on nodemcu
+    cam.setImageSize(VC0706_320x240); cam.reset();delay(3000);
+//     cam.setImageSize(VC0706_160x120); cam.reset(); delay(3000);
+    Serial.print("Image size code = ");  // 00-Large 11-Medium 22-Small
+    Serial.println(cam.getImageSize(), HEX);
+    // cam.setCompression(80); cam.reset();
+    delay(3000);
+    // Serial.println("Compression = " + String((uint8_t) cam.getCompression()));
+    lcd.clear();
+    lcd.print("Camera ready.");
+    delay(3000);
+  }else{
+    Serial.println("No camera found.");
+    lcd.clear();
+    lcd.print("Camera down.");
+    delay(3000);
+    }
+
+  if(doUpload){
+  //Wifi Setup
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid,wifipwd);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print("."); }
+  Serial.println();
+  Serial.println("WiFi connected");  
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.println("----------------------------------------");
+  lcd.clear();
+  lcd.print("WiFi connected");
+  }
+  
+  Serial.println("End setup.");
+  
+//  SD.end();
+//  camera.end();
+  Serial.println("---------------The End!---------------");
 }
   
-void loop() {
+void loop(){
 
-	// Button state reading
-	buttonState=digitalRead(button);
+  // ask the mqtt broker for published messages and update the connection
+  if (!client.connected()){
+    reconnect();
+    }
+  client.loop();
 
-	if (buttonState == 1) {
-		Serial.println("Button pressed");
-		lcd.clear();
-		lcd.setCursor(0,0); 
-		lcd.print("Button pressed");
+  Serial.println("Hold button in 3s to snap!");
+  lcd.clear();
+  lcd.print("3 sec to snap!");
+  delay(3000);
+  // Button state reading
+  buttonState=digitalRead(button);
 
-		// Start camera connection
-		// Try to get the baud rate of the serial connection
-		Serial.println("Starting camera...");
-		lcd.clear();
-		lcd.print("Starting camera");
-
-		if(cam.begin()) {
-			// Print out the camera version information
-			char *reply = cam.getVersion();
-			if (reply == 0) {
-			  Serial.print("Failed to get version");
-			  lcd.clear();
-			  lcd.print("Failed to get version");
-			}
-			else {
-			  Serial.println("-----------------");
-			  Serial.print(reply);
-			  Serial.println("-----------------");
-			}
-			cam.reset();
-			delay(3000);
-			cam.setMotionDetect(false);
-
-			// Set the picture size: 640x480, 320x240 or 160x120
-			// Bigger pictures take longer to transmit
-			// Reset is necessary only if resolution other than 640x480 is selected
-			//cam.setImageSize(VC0706_640x480); // The biggest format does not work
-			// cam.setImageSize(VC0706_320x240); cam.reset();delay(3000); // Medium, perform in 4 or 5 attemps
-			cam.setImageSize(VC0706_160x120); cam.reset(); delay(3000); // Small, perform in 3 or 4 attemps	
-			Serial.print("Image size selected");
-			lcd.clear();
-			lcd.print("Shooting...");
-			uint8_t shoots = 0;
-			bool success = false;
-			while(shoots < retryShoots && success == false) {
-				delay(3000);
-				success = takeShoot();
-				shoots++;
-				cam.resumeVideo();			
-			}
-			if(shoots == retryShoots) {
-				Serial.println("No shoots in 10 attempts without errors. Try changing configuration.");
-				lcd.clear();
-				lcd.print("Shoots failure");
-			}
-			else {
-				Serial.print("Loops needed to find one: ");
-				Serial.println(shoots);
-				lcd.clear();
-				lcd.print("Server upload...");
-				bool ftpResult = sendToFTP();
-				if (ftpResult) {
-					lcd.clear();
-					lcd.print("File loaded");
-				}
-				else{
-					lcd.clear();
-					lcd.print("Upload failure");	
-				}
-			}
-		}
-		else{
-			Serial.println("No camera found");
-			lcd.clear();
-			lcd.print("No camera found");
-		}
-		camera.end();
-		Serial.println("--------------- Process complete ---------------");
-		lcd.clear();
-		lcd.print("Process complete");
-		delay(1000);
-		lcd.clear();
-		lcd.print("Press the button");
-		lcd.setCursor(0,1);  
-  		lcd.print("to take a photo");
-	}
-	if (buttonState==0){
-		//Serial.println("Button not pressed");
-		delay(200);
-	}
+  if (buttonState == 1) {
+    uint8_t shoots = 10;    
+    while(shoots > 0){
+      bool ok = takeShoot();
+      shoots-=1;
+      cam.resumeVideo();
+      delay(3000);
+      if(ok)break;    // if the picture has no errors, send it.
+      }
+    if(shoots == retryShoots){
+      Serial.println("Try changing configuration.");
+      }
+    Serial.print("loops needed to find one: ");
+    Serial.println(retryShoots - shoots);
+    
+    //get and print contents of root folder
+    root = SD.open("/");
+    while(true){
+      File entry = root.openNextFile();
+      if(!entry)
+        break;
+  
+      Serial.println();
+      Serial.print(entry.name());
+      if(!entry.isDirectory()){
+        Serial.print(", size: ");
+        Serial.println(entry.size());
+        }
+      }
+  
+    //Attempt FTP upload
+    if (doUpload){
+      lcd.clear();
+      lcd.print("Load via FTP.");
+      FTPresult = doFTP(xhost,xusername,xpassword,xfilename,xfolder);
+      //What is the outcome?
+      Serial.println("A return code of 226 is success");
+      Serial.print("Return code = ");
+      Serial.println(FTPresult);
+      }
+    }else{
+      Serial.println("Button not pressed");
+      lcd.clear();
+      lcd.print("Not snapped");
+      delay(2000);
+      }
 }
-// Attention! - Consider to retry the FTP upload later if it does not succeed at the first time
 
 boolean takeShoot() {
-	String debugMsg;
+  String debugMsg;
 
-	// Initialize file system.
-	bool formatOk = false;
-	bool beginOk = SPIFFS.begin();
-	if (beginOk) {
+  xfilename[2] = '-';
+  xfilename[5] = '-';
+  xfilename[8] = '-';
+  xfilename[11] = '-';
+  xfilename[14] = '-';
 
-		// Formatting file system
-		formatOk = SPIFFS.format();
-		if (formatOk) {
-			Serial.println("SPIFFS ready to use");
-			lcd.clear();
-			lcd.print("Memory ready");
+  // Search the last name in the SD
+  for (int i = 0; i < 1000; i++) {
+    xfilename[18] = '0' + i/100;
+    xfilename[19] = '0' + i/10;
+    xfilename[20] = '0' + i%10;
+    // create it if it does not exist
+    if (! SD.exists(xfilename)) {
+      break;
+    }
+  }
+  
+  // Prepare file to save image
+  bool fileOpen = true;
+  File imgFile = SD.open(xfilename, FILE_WRITE);
+  if (imgFile == 0) {
+    fileOpen = false;
+    Serial.println("Failed to open file" );
+    return false;
+    }
+  
+  if (! cam.takePicture()){
+    Serial.println("Failed to snap!");
+    lcd.clear();
+    lcd.print("Failed");
+    cam.resumeVideo();
+    SD.remove(xfilename);
+    return false;
+  }else{
+    Serial.println("Picture shot...");
+    lcd.clear();
+    lcd.print("Loading image");
+    delay(1200);
+    }
+  // Get the size of the image taken
+  uint16_t jpglen = cam.frameLength(); delay(6);
 
-			// File creation with write option to save image			
-			File imgFile = SPIFFS.open(filePath, "w");
-			if (!imgFile) {			
-				Serial.println("Failed to open the created file" );
-				lcd.clear();
-				lcd.print("File failure");
-				return false;
-			}
-			
-			Serial.println("Success on open the created file" );
-			lcd.print("File created");
+  Serial.print(" ---------------- ");
+  if (debugOn)  Serial.println("Read image size: " + String(jpglen));
 
-			if (! cam.takePicture()){
-				Serial.println("Failed to snap");
-				lcd.clear();
-				lcd.print("Failed to snap");
-				cam.resumeVideo();
-				return false;
-			}
-			
-			Serial.println("Picture shoots with success");
-			lcd.clear();
-			lcd.print("Shot success!");
-			delay(1200);
-			
-			// Get the size of the image (frame) taken
-			uint16_t jpgSize = cam.frameLength(); delay(6);
+  // Read all the data from the camera buffer
+  uint8_t bytesToRead;
+  uint8_t readFailures = 0;
+  uint8_t* buf;
+  uint8_t chunk = 64;   // read chunks of 64 bytes each
+  while (jpglen > 0) {
+    bytesToRead = jpglen<chunk? jpglen : chunk;
+    buf = cam.readPicture(bytesToRead);  delay(15); // these delays are necessary for the nodemcu
+    jpglen -= bytesToRead;
+    if (buf == 0) {
+      readFailures++;
+    }else{
+      imgFile.write(buf,bytesToRead); delay(15);  // ...here too...
+      }
+    }
+    
+  if (fileOpen) {
+    imgFile.close();
+    Serial.println("File closed.");
+    }
 
-			Serial.println(" ---------------- ");
-			Serial.println("Image size: " + String(jpgSize));
-			Serial.println(" ---------------- ");
+  if(readFailures>maxErrors){
+    Serial.println("Too many errors, retrying...");
+    Serial.println(readFailures);
+    SD.remove(xfilename);
+    return false;
+    }
 
-			// Print image size in the LCD display
-			lcd.clear();
-			lcd.print("Image size: " + String(jpgSize));
-			lcd.clear();
-			lcd.print("Storing image...");
-
-			uint32_t startTime = millis();
-			// Timout counter
-			uint32_t timeOut = millis();
-			// Number of bytes written in the filesystem
-			int bytesWritten = 0;
-			uint8_t bytesToRead;
-			uint8_t readFailures = 0;
-			uint8_t* buf;
-			// Bytes chunk dimension for the camera buffer reading operation
-			uint8_t chunk = 8;			
-			// Read all the data up to jpgSize bytes
-			while (jpgSize > 0) {
-				bytesToRead = jpgSize < chunk ? jpgSize : chunk;
-				buf = cam.readPicture(bytesToRead);
-				delay(15);				
-				jpgSize -= bytesToRead;
-
-				if (buf == 0) readFailures++;				
-				else {
-					if (debugOn) Serial.println("Bytes to read: " + String(bytesToRead));
-					bytesWritten += imgFile.write(buf,bytesToRead);
-					if (debugOn) Serial.println("Bytes writed: " + String(bytesWritten));
-					delay(15);									  	
-				}
-			}
-			cam.printBuff();
-
-			imgFile.close();
-			Serial.println("File closed");			
-
-			if(readFailures > maxErrors) {
-				Serial.println("Too many errors during camera reading, the process has been terminated");
-				lcd.clear();
-				lcd.print("Too many errors");
-				Serial.println(readFailures);
-				return false;
-			}
-
-			uint32_t endTime = millis();
-			if (debugOn) {
-				float transRate = ((float)bytesWritten/1024)/((float)(endTime-startTime)/1000.0);
-				debugMsg = "Read from camera finished: " + String(bytesWritten) + " bytes in " + String(endTime-startTime) + " ms -> " + String(transRate) + " kB/s";
-				Serial.println(debugMsg);
-			}
-
-			Serial.print("Image accepted. Number of errors: ");
-			lcd.clear();
-			lcd.print("Image stored");
-			Serial.println(readFailures);
-			return true;
-
-		}
-		else {
-			Serial.println("SPIFFS not formatted, can not use it");
-			lcd.clear();
-			lcd.print("Memory failure");
-			return false;
-		}
-		SPIFFS.end();
-	}
-	else {
-		Serial.println("SPIFFS currupted, can not use it");
-		lcd.clear();
-		lcd.print("Memory failure");
-		return false;
-	}
+  Serial.print("Image accepted. Number of errors: ");
+  Serial.println(readFailures);
+  return true;
 }
 
-boolean sendToFTP() {
-
-	if(doUpload){
-	  	// Wifi Setup
-	    Serial.println();
-	    Serial.print("Connecting to ");
-	    Serial.println(ssid);
-	    WiFi.begin(ssid,wifipwd);
-	    while (WiFi.status() != WL_CONNECTED) {
-			delay(500);
-			Serial.print("."); 
-	  	}
-	    Serial.println();
-	    Serial.println("WiFi connected");  
-	    Serial.println("IP address: ");
-	    Serial.println(WiFi.localIP());
-	    Serial.println("----------------------------------------");
-	}
-
-	// Get and print contents of SPIFFS root folder
-	SPIFFS.begin();
-	Serial.println("SPIFFS content:");
-	String str = "";
-	Dir dir = SPIFFS.openDir("");
-	while (dir.next()) {
-		str += dir.fileName();
-		str += " / ";
-		str += dir.fileSize();
-		str += "\r\n";
-	}
-	Serial.print(str);
-	Serial.println("--------------------------------");
-
-	if (doUpload){
-	    FTPresult = doFTP(xhost,xusername,xpassword,xfilepath,xfilename,xfolder);	    
-	    Serial.println("A return code of 226 is success");
-	    Serial.print("Return code = ");
-	    Serial.println(FTPresult);
-	    if (FTPresult == 226) {
-	    	Serial.println("FTP success");
-	    }
-	    else {
-	    	Serial.println("FTP failure");
-	    }
-
-	}
-	SPIFFS.end();
-}
 
 /*------------------------------------------------------
  * FUNCTION - doFTP
@@ -365,8 +320,8 @@ boolean sendToFTP() {
  *   
  * Return codes:  
  *    226 - a successful transfer
- *    400+ - any return code greater than 400 indicates an error.
- *    These codes are defined at
+ *    400+ - any return code greater than 400 indicates
+ *    an error. These codes are defined at
  *    https://en.wikipedia.org/wiki/List_of_FTP_server_return_codes 
  *    Exceptions to this are:
  *    900 - failed to open file on SPIFFS
@@ -377,22 +332,20 @@ boolean sendToFTP() {
  *               <FS.h> SPIFFS library
  *   Functions - eRcv
  --------------------------------------------------------*/
-short doFTP(char* host, char* uname, char* pwd, char* filePath, char* fileName, char* folder)
+short doFTP(char* host, char* uname, char* pwd, char* fileName, char* folder)
 {
   WiFiClient ftpclient;
   WiFiClient ftpdclient;
 
-  const short FTPerrcode = 400; // error codes are > 400
-  const byte Bufsize = 100;
+  const short FTPerrcode = 400; //error codes are > 400
+  const byte Bufsize = 128;
   char outBuf[Bufsize];
   short FTPretcode = 0;
-  const byte port = 21; // 21 is the standard connection port
+  const byte port = 21; //21 is the standard connection port
   
-  Serial.print("Trying to open the file path: ");
-  Serial.println(filePath);
-  File ftx = SPIFFS.open(filePath, "r"); // file to be transmitted
+  File ftx = SD.open(fileName, FILE_READ); //file to be transmitted
   if (!ftx) {
-    Serial.println(F("File open failed"));
+    Serial.println(F("file open failed"));
     return 900;}
   if (ftpclient.connect(host,port)) {
     Serial.println(F("Connected to FTP server"));} 
@@ -558,12 +511,73 @@ short eRcv(WiFiClient aclient, char outBuf[], int size)
   while(aclient.available()) {  
     thisByte = aclient.read();    
     Serial.write(thisByte);
-    if(index < (size - 2)) { // Less 2 to leave room for null at end
+    if(index < (size - 2)) { //less 2 to leave room for null at end
       outBuf[index] = thisByte;
       index++;}
-  } // Note: the return from server will be truncated if it is greater than size.
-  outBuf[index] = 0; // Putting a null because later strtok requires a null-delimited string
+  } //note if return from server is > size it is truncated.
+  outBuf[index] = 0; //putting a null because later strtok requires a null-delimited string
   //The first three bytes of outBuf contain the FTP server return code - convert to int.
   for(index = 0; index < 3; index++) {respStr += (char)outBuf[index];}
   return respStr.toInt();
 } // end function eRcv
+
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
+  // initialize LCD
+  lcd.init();
+  // turn on LCD backlight                      
+  lcd.backlight();
+  // set cursor to first column, first row
+
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+    }
+  Serial.println();
+
+  String red;
+  String green;
+  String blue;
+
+  red += (char)payload[0];
+  red += (char)payload[1];
+
+  green += (char)payload[3];
+  green += (char)payload[4];
+
+  blue += (char)payload[6];
+  blue += (char)payload[7];
+
+  Serial.println(red);
+  Serial.println(green);
+  Serial.println(blue);
+
+  lcd.setCursor(0, 0);
+  lcd.clear();
+  lcd.print(red);
+  lcd.print(green);
+  lcd.print(blue);
+  delay(6000);
+
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if(client.connect ("ESP8266Client")){
+      Serial.println("connected");
+      client.subscribe(topic);
+    }else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+      }
+    }
+}
