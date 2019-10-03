@@ -71,6 +71,7 @@ int buttonState = 0;
 
 void setup(){
   Serial.begin(115200);
+  delay(3000); // The camera does not accept commands before 2.5s at least
 
   pinMode(button, INPUT);
   // initialize LCD
@@ -80,8 +81,6 @@ void setup(){
   // set cursor to first column, first row
   lcd.setCursor(0, 0);
   lcd.print("Color Picker");
-
-  delay(3000); // The camera does not accept commands before 2.5s at least
 
   pinMode(button, INPUT);
   Serial.println();
@@ -557,8 +556,12 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   lcd.setCursor(0, 0);
   lcd.clear();
+  lcd.print("Red:");
   lcd.print(red);
+  lcd.print("  Green:");
   lcd.print(green);
+  lcd.setCursor(0,1);
+  lcd.print("Blue:");
   lcd.print(blue);
   delay(6000);
 
