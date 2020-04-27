@@ -3,8 +3,9 @@
 # ColorPicker
 IoT device project to extract the dominant color from a capture image
 
-# Linee guida per il riutilizzo
-# 1. Predisposizione dei servizi Amazon:
+Linee guida per il riutilizzo
+
+1. Predisposizione dei servizi Amazon:
 Per predisporre il server FTP è necessario prima:
 1) Creare un bucket su s3
 2) Impostare un utente con il servizio IAM che permetta l'accesso al bucket di S3. È possibile anche creare una policy per l'accesso al bucket di S3 e a CloudWatch e quindi associarla all'utente creato.
@@ -52,7 +53,8 @@ Se il bucket è stato montato correttamente dovrebbe essere possibile vedere un 
 Affinchè sia possibile comunicare con il dispositivo via mqtt si installano i seguenti pacchetti:
 sudo apt-get install mosquitto-clients mosquitto
 
-# 2. Creazione della funzione lambda:
+2. Creazione della funzione lambda:
+
 La funzione lambda utilizzata è uno script in python 3 che richiede l'uso delle librerie paho-mqtt e opencv-python.
 Non è possibile importare tutte le librerie direttamente dall'ambiente della lambda in quanto è un ambiente serverless ristretto, ed è dunque necessario che queste vengano caricate esternamente.
 Si procede quindi nel seguente modo:
@@ -69,18 +71,18 @@ A questo punto si può concludere inserendo il codice della lambda disponibile i
 /blob/master/lambda_handler.py
 Nel codice è necessario indicare quale sia l’indirizzo pubblico del broker mqtt.
 
-# 3. Installazione dell’ambiente di sviluppo Arduino.
-# 4. Download della libreria per l’utilizzo del nodeMCU Adafruit_ESP8266.
-# 5. Download della libreria PubSubClient per l’utilizzo del servizio MQTT.
-# 6. Collegamento dei componenti come precedentemente indicato.
-# 7. Download del codice disponibile in questo repository.
+3. Installazione dell’ambiente di sviluppo Arduino.
+4. Download della libreria per l’utilizzo del nodeMCU Adafruit_ESP8266.
+5. Download della libreria PubSubClient per l’utilizzo del servizio MQTT.
+6. Collegamento dei componenti come precedentemente indicato.
+7. Download del codice disponibile in questo repository.
     a. Installazione delle librerie presenti nella sotto-cartella libraries del progetto.
     b. Esecuzione dello script .ino disponibile nella sotto-cartella I2C_Scanner per l’individuazione dell’indirizzo del display.
     c. Aprire lo script disponibile nella sotto-cartella SNAP_SPIFFS_FTP e impostare tutti i parametri di connessione, wi-fi e FTP ed inserire infine l’indirizzo ricavato al punto precedente.
-# 8. Collegare la scheda al computer e procedere al caricamento dello script.
-# 9. Effettuare il caricamento dell’interfaccia web disponibile nella sottodirectory WebInterface, seguendo le prime due sezioni di questo tutorial:
+8. Collegare la scheda al computer e procedere al caricamento dello script.
+9. Effettuare il caricamento dell’interfaccia web disponibile nella sottodirectory WebInterface, seguendo le prime due sezioni di questo tutorial:
 https://aws.amazon.com/it/getting-started/projects/build-serverless-web-app-lambda-apigateway-s3-dynamodb-cognito/module-2/
-# 10. Aggiornare il file ride.js nella sottocartella ​WebInterface/js ​con le informazioni riguardanti il bucket e il nome del file .json e procedere al suo caricamento sul bucket impostato al punto precedente.
-# 11. Registrarsi tramite apposito form cliccando sul pulsante Sign Up nella homepage dell’interfaccia.
-# 12. Effettuare degli scatti con il dispositivo.
-# 13. Effettuare il login e visualizzare le foto scattate.
+10. Aggiornare il file ride.js nella sottocartella ​WebInterface/js ​con le informazioni riguardanti il bucket e il nome del file .json e procedere al suo caricamento sul bucket impostato al punto precedente.
+11. Registrarsi tramite apposito form cliccando sul pulsante Sign Up nella homepage dell’interfaccia.
+12. Effettuare degli scatti con il dispositivo.
+13. Effettuare il login e visualizzare le foto scattate.
