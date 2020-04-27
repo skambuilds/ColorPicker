@@ -28,7 +28,7 @@ Nello specifico è necessario abilitare la modalità passiva del demone, in quan
     pasv_enable=YES
     pasv_min_port=1024
     pasv_max_port=1048
-    pasv_address=ip.dell.istanza.ec2
+    pasv_address=ip.istanza.ec2
 
 È necessario abilitare l'utente locale in scrittura per poter scrivere i dati in entrata, inserendo il suo nome nel file /etc/vsftpd.chroot_list:
 
