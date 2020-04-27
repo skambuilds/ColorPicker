@@ -3,6 +3,10 @@
 # ColorPicker
 IoT device project to extract the dominant color from a capture image.
 
+## Autori
+Alberto Pes
+Francesco Littarru
+
 ## Descrizione del progetto
 Il progetto mira alla realizzazione di un dispositivo IoT in grado di catturare un’immagine a colori tramite una fotocamera azionata mediante un apposito pulsante. Successivamente il dispositivo invia l’immagine al server cloud che provvede al processamento della stessa estrapolando il valore RGB corrispondente al colore predominante presente nell’immagine e provvede infine all’invio di tale informazione al dispositivo IoT. Il dispositivo provvederà alla visualizzazione di tale valore mediante un display LCD.
 Le immagini inviate al server cloud e i valori RGB ricavati saranno inoltre disponibili tramite interfaccia web per la successiva visualizzazione e gestione da parte dell’utente.
