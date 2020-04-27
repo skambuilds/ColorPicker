@@ -10,6 +10,7 @@ Linee guida per il riutilizzo
 Per predisporre il server FTP è necessario prima:
 
 a. Creare un bucket su s3
+
 b. Impostare un utente con il servizio IAM che permetta l'accesso al bucket di S3. È possibile anche creare una policy per l'accesso al bucket di S3 e a CloudWatch e quindi associarla all'utente creato.
 
 Dall'utente si generano le chiavi d'accesso ai servizi amazon nella scheda delle credenziali, basate sulle policy impostate, che verranno utilizzate sull'istanza ec2 e sulla lambda.
