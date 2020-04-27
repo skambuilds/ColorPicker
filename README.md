@@ -6,6 +6,7 @@ IoT device project to extract the dominant color from a capture image
 Linee guida per il riutilizzo
 
 1. Predisposizione dei servizi Amazon:
+
 Per predisporre il server FTP è necessario prima:
     a. Creare un bucket su s3
     b. Impostare un utente con il servizio IAM che permetta l'accesso al bucket di S3. È possibile anche creare una policy per l'accesso al bucket di S3 e a CloudWatch e quindi associarla all'utente creato.
@@ -83,6 +84,7 @@ Nel codice è necessario indicare quale sia l’indirizzo pubblico del broker mq
 9. Effettuare il caricamento dell’interfaccia web disponibile nella sottodirectory WebInterface, seguendo le prime due sezioni di questo tutorial:
 
 https://aws.amazon.com/it/getting-started/projects/build-serverless-web-app-lambda-apigateway-s3-dynamodb-cognito/module-2/
+
 10. Aggiornare il file ride.js nella sottocartella ​WebInterface/js ​con le informazioni riguardanti il bucket e il nome del file .json e procedere al suo caricamento sul bucket impostato al punto precedente.
 11. Registrarsi tramite apposito form cliccando sul pulsante Sign Up nella homepage dell’interfaccia.
 12. Effettuare degli scatti con il dispositivo.
