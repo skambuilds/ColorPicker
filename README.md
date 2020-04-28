@@ -1,4 +1,4 @@
-![Color Picker Logo](CPRes/CPLogo.png)
+![Color Picker Logo](CPLogo/CPLogo.png)
 
 # ColorPicker
 NodeMCU esp8266 - IoT device project to extract the dominant color from a capture image.
@@ -18,7 +18,7 @@ Le immagini inviate al server cloud e i valori RGB ricavati saranno inoltre disp
 * Display I2C LCD (16x2)
 * Lettore schede SD
 
-![Color Picker Scheme](CPRes/CPScheme.png)
+![Color Picker Scheme](CPLogo/CPSchema.png)
 
 ### Predisposizione dei servizi Amazon
 
